@@ -42,6 +42,7 @@ export const App = () => {
   const [remoteStreams, setRemoteStreams] = useState({});
   const [isSharing, setIsSharing] = useState(false);
   const [error, setError] = useState("");
+  const peersRef = useRef({});
 
   useEffect(() => {
     socket.on("session-created", ({ sessionId }) => {
@@ -51,9 +52,8 @@ export const App = () => {
 
     socket.on("participant-joined", ({ participantId }) => {
       console.log("Participant joined:", participantId);
-      if (isSharing) {
-        // If we're currently sharing, initiate a connection with the new participant
-        initiateShare(participantId);
+      if (isSharing && localStream) {
+        initiateShare(participantId, localStream);
       }
     });
 
@@ -64,8 +64,8 @@ export const App = () => {
     socket.on("signal", ({ from, signal }) => {
       console.log("Received signal from:", from);
       
-      if (peers[from]) {
-        peers[from].signal(signal);
+      if (peersRef.current[from]) {
+        peersRef.current[from].signal(signal);
       } else {
         const peer = new SimplePeer({
           initiator: false,
@@ -77,22 +77,38 @@ export const App = () => {
         });
 
         peer.on("stream", (stream) => {
+          console.log("Received stream from:", from);
           setRemoteStreams(prev => ({
             ...prev,
             [from]: stream
           }));
         });
 
+        peer.on("error", (err) => {
+          console.error("Peer error:", err);
+          setError(`Peer connection error: ${err.message}`);
+        });
+
         peer.signal(signal);
+        peersRef.current[from] = peer;
         setPeers(prev => ({ ...prev, [from]: peer }));
       }
     });
 
     socket.on("user-stopped-sharing", ({ userId }) => {
+      if (peersRef.current[userId]) {
+        peersRef.current[userId].destroy();
+        delete peersRef.current[userId];
+      }
       setRemoteStreams(prev => {
         const newStreams = { ...prev };
         delete newStreams[userId];
         return newStreams;
+      });
+      setPeers(prev => {
+        const newPeers = { ...prev };
+        delete newPeers[userId];
+        return newPeers;
       });
     });
 
@@ -102,21 +118,34 @@ export const App = () => {
       socket.off("user-started-sharing");
       socket.off("signal");
       socket.off("user-stopped-sharing");
+      
+      // Cleanup all peer connections
+      Object.values(peersRef.current).forEach(peer => {
+        if (peer) {
+          peer.destroy();
+        }
+      });
     };
-  }, [peers, isSharing]);
+  }, [isSharing]);
 
-  const initiateShare = async (participantId) => {
+  const initiateShare = async (participantId, stream) => {
     try {
       const peer = new SimplePeer({
         initiator: true,
         trickle: false,
-        stream: localStream
+        stream: stream
       });
 
       peer.on("signal", (signal) => {
         socket.emit("signal", { to: participantId, signal });
       });
 
+      peer.on("error", (err) => {
+        console.error("Peer error:", err);
+        setError(`Peer connection error: ${err.message}`);
+      });
+
+      peersRef.current[participantId] = peer;
       setPeers(prev => ({ ...prev, [participantId]: peer }));
     } catch (err) {
       console.error("Error initiating share:", err);
@@ -146,9 +175,13 @@ export const App = () => {
       setIsSharing(true);
       socket.emit("start-sharing", sessionId);
 
-      // Share with all existing peers
-      Object.entries(peers).forEach(([participantId, peer]) => {
-        peer.addStream(stream);
+      // Get the current participants from the server and create peer connections
+      socket.emit("get-participants", sessionId, (participants) => {
+        participants.forEach((participantId) => {
+          if (participantId !== socket.id) {
+            initiateShare(participantId, stream);
+          }
+        });
       });
 
       // Handle stream stop
@@ -164,6 +197,16 @@ export const App = () => {
   const stopSharing = () => {
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
+      
+      // Destroy all peer connections
+      Object.values(peersRef.current).forEach(peer => {
+        if (peer) {
+          peer.destroy();
+        }
+      });
+      
+      peersRef.current = {};
+      setPeers({});
       setLocalStream(null);
       setIsSharing(false);
       socket.emit("stop-sharing", sessionId);
@@ -222,7 +265,7 @@ export const App = () => {
           <VideoScreen
             key={peerId}
             stream={stream}
-            username={`Participant ${peerId.slice(0, 4)}`}
+            username={`Participant Id: ${peerId.slice(0, 4)}`}
           />
         ))}
       </div>

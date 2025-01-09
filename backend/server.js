@@ -56,6 +56,14 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("get-participants", (sessionId, callback) => {
+    if (sessions[sessionId]) {
+      callback(Array.from(sessions[sessionId].participants));
+    } else {
+      callback([]);
+    }
+  });
+
   socket.on("start-sharing", (sessionId) => {
     if (sessions[sessionId]) {
       sessions[sessionId].activeStreams.set(socket.id, {
@@ -96,6 +104,13 @@ io.on("connection", (socket) => {
           participantId: socket.id,
           totalParticipants: Array.from(session.participants)
         });
+
+        if (session.activeStreams.has(socket.id)) {
+          io.to(sessionId).emit("user-stopped-sharing", {
+            userId: socket.id,
+            sessionId
+          });
+        }
         
         // If this was the host and no participants remain, clean up the session
         if (session.host === socket.id && session.participants.size === 0) {
