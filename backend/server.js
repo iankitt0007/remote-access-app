@@ -7,14 +7,16 @@ const cors = require("cors");
 const app = express();
 const server = http.createServer(app);
 
-app.use(cors());
+// Add the CORS configuration here
+const corsOptions = {
+  origin: ["http://localhost:3000", "http://10.5.2.125:3000"],
+  methods: ["GET", "POST"],
+  credentials: true,
+};
+app.use(cors(corsOptions));
 
 const io = new Server(server, {
-  cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"],
-    credentials: true
-  }
+  cors: corsOptions,
 });
 
 const sessions = {};
@@ -27,28 +29,28 @@ io.on("connection", (socket) => {
     sessions[sessionId] = {
       host: socket.id,
       participants: new Set([socket.id]),
-      activeStreams: new Map()
+      activeStreams: new Map(),
     };
     socket.join(sessionId);
-    socket.emit("session-created", { sessionId, role: 'host' });
+    socket.emit("session-created", { sessionId, role: "host" });
   });
 
   socket.on("join-session", (sessionId) => {
     if (sessions[sessionId]) {
       socket.join(sessionId);
       sessions[sessionId].participants.add(socket.id);
-      
+
       // Notify everyone in the session about the new participant
       io.to(sessionId).emit("participant-joined", {
         participantId: socket.id,
-        totalParticipants: Array.from(sessions[sessionId].participants)
+        totalParticipants: Array.from(sessions[sessionId].participants),
       });
 
       // If someone is already sharing, notify the new participant
       sessions[sessionId].activeStreams.forEach((streamInfo, streamerId) => {
         socket.emit("user-started-sharing", {
           userId: streamerId,
-          sessionId
+          sessionId,
         });
       });
     } else {
@@ -67,11 +69,11 @@ io.on("connection", (socket) => {
   socket.on("start-sharing", (sessionId) => {
     if (sessions[sessionId]) {
       sessions[sessionId].activeStreams.set(socket.id, {
-        startTime: Date.now()
+        startTime: Date.now(),
       });
       socket.to(sessionId).emit("user-started-sharing", {
         userId: socket.id,
-        sessionId
+        sessionId,
       });
     }
   });
@@ -81,7 +83,7 @@ io.on("connection", (socket) => {
       sessions[sessionId].activeStreams.delete(socket.id);
       socket.to(sessionId).emit("user-stopped-sharing", {
         userId: socket.id,
-        sessionId
+        sessionId,
       });
     }
   });
@@ -89,7 +91,7 @@ io.on("connection", (socket) => {
   socket.on("signal", ({ to, signal }) => {
     io.to(to).emit("signal", {
       from: socket.id,
-      signal
+      signal,
     });
   });
 
@@ -99,19 +101,19 @@ io.on("connection", (socket) => {
       if (session.participants.has(socket.id)) {
         session.participants.delete(socket.id);
         session.activeStreams.delete(socket.id);
-        
+
         io.to(sessionId).emit("participant-left", {
           participantId: socket.id,
-          totalParticipants: Array.from(session.participants)
+          totalParticipants: Array.from(session.participants),
         });
 
         if (session.activeStreams.has(socket.id)) {
           io.to(sessionId).emit("user-stopped-sharing", {
             userId: socket.id,
-            sessionId
+            sessionId,
           });
         }
-        
+
         // If this was the host and no participants remain, clean up the session
         if (session.host === socket.id && session.participants.size === 0) {
           delete sessions[sessionId];

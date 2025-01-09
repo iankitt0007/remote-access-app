@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
 import SimplePeer from "simple-peer";
-import './App.css';
+import "./App.css";
 
 // Add polyfills
-import 'buffer';
-import process from 'process';
+import "buffer";
+import process from "process";
 window.process = process;
 window.global = window;
 
@@ -63,13 +63,13 @@ export const App = () => {
 
     socket.on("signal", ({ from, signal }) => {
       console.log("Received signal from:", from);
-      
+
       if (peersRef.current[from]) {
         peersRef.current[from].signal(signal);
       } else {
         const peer = new SimplePeer({
           initiator: false,
-          trickle: false
+          trickle: false,
         });
 
         peer.on("signal", (signal) => {
@@ -78,9 +78,9 @@ export const App = () => {
 
         peer.on("stream", (stream) => {
           console.log("Received stream from:", from);
-          setRemoteStreams(prev => ({
+          setRemoteStreams((prev) => ({
             ...prev,
-            [from]: stream
+            [from]: stream,
           }));
         });
 
@@ -91,7 +91,7 @@ export const App = () => {
 
         peer.signal(signal);
         peersRef.current[from] = peer;
-        setPeers(prev => ({ ...prev, [from]: peer }));
+        setPeers((prev) => ({ ...prev, [from]: peer }));
       }
     });
 
@@ -100,12 +100,12 @@ export const App = () => {
         peersRef.current[userId].destroy();
         delete peersRef.current[userId];
       }
-      setRemoteStreams(prev => {
+      setRemoteStreams((prev) => {
         const newStreams = { ...prev };
         delete newStreams[userId];
         return newStreams;
       });
-      setPeers(prev => {
+      setPeers((prev) => {
         const newPeers = { ...prev };
         delete newPeers[userId];
         return newPeers;
@@ -118,9 +118,9 @@ export const App = () => {
       socket.off("user-started-sharing");
       socket.off("signal");
       socket.off("user-stopped-sharing");
-      
+
       // Cleanup all peer connections
-      Object.values(peersRef.current).forEach(peer => {
+      Object.values(peersRef.current).forEach((peer) => {
         if (peer) {
           peer.destroy();
         }
@@ -133,7 +133,7 @@ export const App = () => {
       const peer = new SimplePeer({
         initiator: true,
         trickle: false,
-        stream: stream
+        stream: stream,
       });
 
       peer.on("signal", (signal) => {
@@ -146,7 +146,7 @@ export const App = () => {
       });
 
       peersRef.current[participantId] = peer;
-      setPeers(prev => ({ ...prev, [participantId]: peer }));
+      setPeers((prev) => ({ ...prev, [participantId]: peer }));
     } catch (err) {
       console.error("Error initiating share:", err);
       setError("Failed to initiate sharing");
@@ -168,7 +168,7 @@ export const App = () => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
-        audio: true
+        audio: true,
       });
 
       setLocalStream(stream);
@@ -196,15 +196,15 @@ export const App = () => {
 
   const stopSharing = () => {
     if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-      
+      localStream.getTracks().forEach((track) => track.stop());
+
       // Destroy all peer connections
-      Object.values(peersRef.current).forEach(peer => {
+      Object.values(peersRef.current).forEach((peer) => {
         if (peer) {
           peer.destroy();
         }
       });
-      
+
       peersRef.current = {};
       setPeers({});
       setLocalStream(null);
@@ -216,10 +216,10 @@ export const App = () => {
   return (
     <div className="container">
       {error && <div className="error-message">{error}</div>}
-      
+
       <div className="control-panel">
         <h2>Screen Sharing Session</h2>
-        
+
         {!sessionId ? (
           <div className="session-controls">
             <div>
@@ -257,10 +257,8 @@ export const App = () => {
       </div>
 
       <div className="video-grid">
-        {localStream && (
-          <VideoScreen stream={localStream} username="You" />
-        )}
-        
+        {localStream && <VideoScreen stream={localStream} username="You" />}
+
         {Object.entries(remoteStreams).map(([peerId, stream]) => (
           <VideoScreen
             key={peerId}
